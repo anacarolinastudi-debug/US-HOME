@@ -12,26 +12,13 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { MonthTabs, buildMonthList, currentYearMonth } from '@/components/MonthTabs'
 import { RefreshCw } from 'lucide-react'
 
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
 
-function monthLabel(dateStr: string) {
-  return new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
-}
-
 function expenseMonth(e: Expense) {
   return (e.due_date ?? e.created_at).slice(0, 7)
-}
-
-function groupByMonth(expenses: Expense[]): [string, Expense[]][] {
-  const map = new Map<string, Expense[]>()
-  for (const e of expenses) {
-    const m = expenseMonth(e)
-    if (!map.has(m)) map.set(m, [])
-    map.get(m)!.push(e)
-  }
-  return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]))
 }
 
 interface FormProps {
@@ -46,6 +33,7 @@ interface FormProps {
 function ExpenseForm({ mode, profiles, myId, editing, onSaved, onClose }: FormProps) {
   const [description, setDescription] = React.useState(editing?.description ?? '')
   const [amount, setAmount] = React.useState(editing ? String(editing.amount) : '')
+  const [dueDate, setDueDate] = React.useState(editing?.due_date ?? new Date().toISOString().slice(0, 10))
   const [isRecurring, setIsRecurring] = React.useState(false)
   const [recurrenceDay, setRecurrenceDay] = React.useState('1')
   const [paidBy, setPaidBy] = React.useState(myId)
@@ -78,6 +66,7 @@ function ExpenseForm({ mode, profiles, myId, editing, onSaved, onClose }: FormPr
           amount: amountNum,
           kind: mode === 'imprevistos' ? 'imprevisto' : isRecurring ? 'recorrente' : 'avulsa',
           recurrence_day: isRecurring ? Number(recurrenceDay) : null,
+          due_date: isRecurring ? null : dueDate,
           paid_by: paidBy,
           participant_ids: selectedProfiles.map(p => p.id),
           split_method: splitMethod,
@@ -114,6 +103,12 @@ function ExpenseForm({ mode, profiles, myId, editing, onSaved, onClose }: FormPr
         <div className="flex flex-col gap-2">
           <Label htmlFor="rday">Dia do mês de vencimento</Label>
           <Input id="rday" type="number" min={1} max={28} value={recurrenceDay} onChange={e => setRecurrenceDay(e.target.value)} className="w-24" />
+        </div>
+      )}
+      {!isRecurring && !editing && (
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="dueDate">Data de pagamento</Label>
+          <Input id="dueDate" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} className="w-44" />
         </div>
       )}
 
@@ -183,6 +178,7 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
   const [loading, setLoading] = React.useState(true)
   const [open, setOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<Expense | null>(null)
+  const [selectedMonth, setSelectedMonth] = React.useState(currentYearMonth())
 
   const load = React.useCallback(async () => {
     setLoading(true)
@@ -204,7 +200,8 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
   React.useEffect(() => { load() }, [load])
 
   const profileName = (id: string) => profiles.find(p => p.id === id)?.display_name ?? '—'
-  const grouped = groupByMonth(expenses)
+  const months = buildMonthList(expenses.map(expenseMonth))
+  const monthExpenses = expenses.filter(e => expenseMonth(e) === selectedMonth)
 
   async function handleCancel(id: string) {
     if (!confirm('Excluir esta despesa?')) return
@@ -246,54 +243,52 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
         </div>
       )}
 
+      <MonthTabs months={months} value={selectedMonth} onChange={setSelectedMonth} />
+
       {loading ? (
         <p className="text-muted-foreground">Carregando…</p>
-      ) : expenses.length === 0 ? (
-        <p className="text-muted-foreground">Nenhuma despesa lançada ainda.</p>
-      ) : grouped.map(([month, items]) => (
-        <section key={month}>
-          <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            {monthLabel(month + '-01')}
-          </h2>
-          <div className="flex flex-col gap-3">
-            {items.map(expense => {
-              const expSplits = splits.filter(s => s.expense_id === expense.id)
-              const canEdit = profile?.is_admin || profile?.id === expense.created_by
-              return (
-                <Card key={expense.id} className={expense.status === 'cancelada' ? 'opacity-50' : ''}>
-                  <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0 pb-2">
-                    <div className="min-w-0">
-                      <CardTitle className="text-base">{expense.description}</CardTitle>
-                      <p className="text-sm text-muted-foreground">
-                        {currency.format(expense.amount)}
-                        {expense.kind !== 'avulsa' && ` · ${expense.kind}`}
-                        {expense.paid_by && expense.paid_by !== expense.created_by && ` · pago por ${profileName(expense.paid_by)}`}
-                        {expense.status === 'cancelada' && ' · cancelada'}
-                      </p>
+      ) : monthExpenses.length === 0 ? (
+        <p className="text-muted-foreground">Nenhuma despesa neste mês.</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {monthExpenses.map(expense => {
+            const expSplits = splits.filter(s => s.expense_id === expense.id)
+            const canEdit = profile?.is_admin || profile?.id === expense.created_by
+            return (
+              <Card key={expense.id} className={expense.status === 'cancelada' ? 'opacity-50' : ''}>
+                <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0 pb-2">
+                  <div className="min-w-0">
+                    <CardTitle className="text-base">{expense.description}</CardTitle>
+                    <p className="text-sm text-muted-foreground">
+                      {currency.format(expense.amount)}
+                      {expense.kind !== 'avulsa' && ` · ${expense.kind}`}
+                      {expense.due_date && ` · vence ${new Date(expense.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}`}
+                      {expense.paid_by && expense.paid_by !== expense.created_by && ` · pago por ${profileName(expense.paid_by)}`}
+                      {expense.status === 'cancelada' && ' · cancelada'}
+                    </p>
+                  </div>
+                  {canEdit && expense.status === 'ativa' && (
+                    <div className="flex flex-shrink-0 gap-2">
+                      <Button variant="outline" size="sm" onClick={() => { setEditing(expense); setOpen(true) }}>Editar</Button>
+                      <Button variant="destructive" size="sm" onClick={() => handleCancel(expense.id)}>Excluir</Button>
                     </div>
-                    {canEdit && expense.status === 'ativa' && (
-                      <div className="flex flex-shrink-0 gap-2">
-                        <Button variant="outline" size="sm" onClick={() => { setEditing(expense); setOpen(true) }}>Editar</Button>
-                        <Button variant="destructive" size="sm" onClick={() => handleCancel(expense.id)}>Excluir</Button>
-                      </div>
-                    )}
-                  </CardHeader>
-                  {expSplits.length > 0 && (
-                    <CardContent className="pt-0">
-                      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Rateio</p>
-                      <ul className="space-y-0.5 text-sm text-muted-foreground">
-                        {expSplits.map(s => (
-                          <li key={s.id}>{profileName(s.profile_id)}: {currency.format(s.amount_owed)} ({s.percent_used}%)</li>
-                        ))}
-                      </ul>
-                    </CardContent>
                   )}
-                </Card>
-              )
-            })}
-          </div>
-        </section>
-      ))}
+                </CardHeader>
+                {expSplits.length > 0 && (
+                  <CardContent className="pt-0">
+                    <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Rateio</p>
+                    <ul className="space-y-0.5 text-sm text-muted-foreground">
+                      {expSplits.map(s => (
+                        <li key={s.id}>{profileName(s.profile_id)}: {currency.format(s.amount_owed)} ({s.percent_used}%)</li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                )}
+              </Card>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
