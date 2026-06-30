@@ -1,14 +1,28 @@
 import * as React from 'react'
 import { useAuth } from '@/features/auth/AuthContext'
-import { fetchExpenses, fetchExpenseSplits } from '@/lib/data'
+import { fetchExpenses, fetchExpenseSplits, fetchRecurringTemplates } from '@/lib/data'
 import type { Expense, ExpenseSplit } from '@/lib/database.types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { MonthTabs, buildMonthList, currentYearMonth, monthLabel } from '@/components/MonthTabs'
+import { MonthTabs, buildMonthList, currentYearMonth, monthLabel, nextYearMonth } from '@/components/MonthTabs'
 
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
 
 function expenseMonth(e: Expense) {
   return (e.due_date ?? e.created_at).slice(0, 7)
+}
+
+function projectedRecurringDate(template: Expense, yearMonth: string) {
+  return `${yearMonth}-${String(template.recurrence_day ?? 1).padStart(2, '0')}`
+}
+
+function projectedRecurringExpense(template: Expense, yearMonth: string): Expense {
+  return {
+    ...template,
+    id: `preview-${template.id}-${yearMonth}`,
+    due_date: projectedRecurringDate(template, yearMonth),
+    template_id: template.id,
+    year_month: yearMonth,
+  }
 }
 
 export function DashboardPage() {
@@ -21,12 +35,24 @@ export function DashboardPage() {
   React.useEffect(() => {
     async function load() {
       setLoading(true)
-      const allExpenses = await fetchExpenses()
+      const [allExpenses, templates] = await Promise.all([fetchExpenses(), fetchRecurringTemplates()])
       const visible = allExpenses.filter(e => e.status === 'ativa' && !(e.kind === 'recorrente' && e.template_id === null))
-      setExpenses(visible)
-      if (visible.length > 0) {
-        const allSplits = await fetchExpenseSplits(visible.map(e => e.id))
-        setSplits(allSplits.filter(s => s.profile_id === profile?.id))
+      const nextMonth = nextYearMonth()
+      const previewExpenses = templates
+        .filter(template => template.status === 'ativa')
+        .filter(template => !visible.some(expense => expense.template_id === template.id && expense.year_month === nextMonth))
+        .map(template => projectedRecurringExpense(template, nextMonth))
+      const displayExpenses = [...visible, ...previewExpenses]
+      setExpenses(displayExpenses)
+      if (displayExpenses.length > 0) {
+        const allSplits = await fetchExpenseSplits([...visible, ...templates].map(e => e.id))
+        const previewSplits = previewExpenses.flatMap(preview =>
+          allSplits
+            .filter(split => split.expense_id === preview.template_id)
+            .map(split => ({ ...split, id: `preview-${preview.id}-${split.id}`, expense_id: preview.id })),
+        )
+        const displaySplits = [...allSplits, ...previewSplits]
+        setSplits(displaySplits.filter(s => s.profile_id === profile?.id))
       }
       setLoading(false)
     }

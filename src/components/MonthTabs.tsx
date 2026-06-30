@@ -1,8 +1,14 @@
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 export function currentYearMonth() {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+}
+
+export function nextYearMonth(yearMonth = currentYearMonth()) {
+  const [year, month] = yearMonth.split('-').map(Number)
+  const date = new Date(year, month, 1)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
 
 export function monthLabel(yearMonth: string) {
@@ -10,25 +16,25 @@ export function monthLabel(yearMonth: string) {
 }
 
 export function buildMonthList(monthsWithData: string[]) {
-  const set = new Set([currentYearMonth(), ...monthsWithData])
+  const current = currentYearMonth()
+  const set = new Set([current, nextYearMonth(current), ...monthsWithData])
   return [...set].sort((a, b) => b.localeCompare(a))
 }
 
 export function MonthTabs({ months, value, onChange }: { months: string[]; value: string; onChange: (m: string) => void }) {
   if (months.length === 0) return null
   return (
-    <Tabs value={value} onValueChange={onChange}>
-      <TabsList className="h-auto flex-wrap justify-start gap-1 bg-transparent p-0">
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className="w-full max-w-xs capitalize">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
         {months.map(m => (
-          <TabsTrigger
-            key={m}
-            value={m}
-            className="rounded-full border bg-card px-3 py-1.5 text-xs capitalize data-[state=active]:border-primary data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-none"
-          >
+          <SelectItem key={m} value={m} className="capitalize">
             {monthLabel(m)}
-          </TabsTrigger>
+          </SelectItem>
         ))}
-      </TabsList>
-    </Tabs>
+      </SelectContent>
+    </Select>
   )
 }

@@ -12,13 +12,27 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { MonthTabs, buildMonthList, currentYearMonth } from '@/components/MonthTabs'
+import { MonthTabs, buildMonthList, currentYearMonth, nextYearMonth } from '@/components/MonthTabs'
 import { RefreshCw } from 'lucide-react'
 
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
 
 function expenseMonth(e: Expense) {
   return (e.due_date ?? e.created_at).slice(0, 7)
+}
+
+function projectedRecurringDate(template: Expense, yearMonth: string) {
+  return `${yearMonth}-${String(template.recurrence_day ?? 1).padStart(2, '0')}`
+}
+
+function projectedRecurringExpense(template: Expense, yearMonth: string): Expense {
+  return {
+    ...template,
+    id: `preview-${template.id}-${yearMonth}`,
+    due_date: projectedRecurringDate(template, yearMonth),
+    template_id: template.id,
+    year_month: yearMonth,
+  }
 }
 
 interface FormProps {
@@ -200,8 +214,22 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
   React.useEffect(() => { load() }, [load])
 
   const profileName = (id: string) => profiles.find(p => p.id === id)?.display_name ?? '—'
-  const months = buildMonthList(expenses.map(expenseMonth))
-  const monthExpenses = expenses.filter(e => expenseMonth(e) === selectedMonth)
+  const nextMonth = nextYearMonth()
+  const previewExpenses = mode === 'all' && selectedMonth === nextMonth
+    ? templates
+      .filter(template => template.status === 'ativa')
+      .filter(template => !expenses.some(expense => expense.template_id === template.id && expense.year_month === selectedMonth))
+      .map(template => projectedRecurringExpense(template, selectedMonth))
+    : []
+  const previewSplits = previewExpenses.flatMap(preview =>
+    splits
+      .filter(split => split.expense_id === preview.template_id)
+      .map(split => ({ ...split, id: `preview-${preview.id}-${split.id}`, expense_id: preview.id })),
+  )
+  const displayExpenses = [...expenses, ...previewExpenses]
+  const displaySplits = [...splits, ...previewSplits]
+  const months = buildMonthList(displayExpenses.map(expenseMonth))
+  const monthExpenses = displayExpenses.filter(e => expenseMonth(e) === selectedMonth)
 
   async function handleCancel(id: string) {
     if (!confirm('Excluir esta despesa?')) return
@@ -252,8 +280,9 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
       ) : (
         <div className="flex flex-col gap-3">
           {monthExpenses.map(expense => {
-            const expSplits = splits.filter(s => s.expense_id === expense.id)
+            const expSplits = displaySplits.filter(s => s.expense_id === expense.id)
             const canEdit = profile?.is_admin || profile?.id === expense.created_by
+            const isPreview = expense.id.startsWith('preview-')
             return (
               <Card key={expense.id} className={expense.status === 'cancelada' ? 'opacity-50' : ''}>
                 <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0 pb-2">
@@ -264,10 +293,11 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
                       {expense.kind !== 'avulsa' && ` · ${expense.kind}`}
                       {expense.due_date && ` · vence ${new Date(expense.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}`}
                       {expense.paid_by && expense.paid_by !== expense.created_by && ` · pago por ${profileName(expense.paid_by)}`}
+                      {isPreview && ' · previsão'}
                       {expense.status === 'cancelada' && ' · cancelada'}
                     </p>
                   </div>
-                  {canEdit && expense.status === 'ativa' && (
+                  {canEdit && expense.status === 'ativa' && !isPreview && (
                     <div className="flex flex-shrink-0 gap-2">
                       <Button variant="outline" size="sm" onClick={() => { setEditing(expense); setOpen(true) }}>Editar</Button>
                       <Button variant="destructive" size="sm" onClick={() => handleCancel(expense.id)}>Excluir</Button>

@@ -21,7 +21,6 @@ const TAB_LABELS: { key: keyof TabPermissions; label: string }[] = [
   { key: 'imprevistos', label: 'Imprevistos' },
   { key: 'metas', label: 'Metas' },
   { key: 'saldos', label: 'Saldos' },
-  { key: 'historico', label: 'Histórico' },
 ]
 
 const DEFAULT_PERMISSIONS: TabPermissions = {
@@ -29,7 +28,6 @@ const DEFAULT_PERMISSIONS: TabPermissions = {
   imprevistos: false,
   metas: false,
   saldos: false,
-  historico: false,
 }
 
 export function AdminPage() {
@@ -183,7 +181,6 @@ function UsersSection({ profiles, onChanged }: { profiles: Profile[]; onChanged:
       imprevistos: false,
       metas: false,
       saldos: false,
-      historico: false,
       ...cleanPerms,
     }
     setEditing({ ...profile, permissions: normalizedPermissions })

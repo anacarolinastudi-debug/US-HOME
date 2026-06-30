@@ -7,7 +7,6 @@ export interface TabPermissions {
   despesas: boolean
   imprevistos: boolean
   metas: boolean
-  historico: boolean
   saldos: boolean
 }
 
@@ -84,4 +83,3 @@ export interface GoalContribution {
   note: string | null
   created_at: string
 }
-

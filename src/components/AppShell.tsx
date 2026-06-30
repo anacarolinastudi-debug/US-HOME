@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, Receipt, AlertTriangle, Target,
-  History, ArrowLeftRight, Settings, LogOut, Menu, X,
+  ArrowLeftRight, Settings, LogOut, Menu, X,
 } from 'lucide-react'
 
 const NAV_ITEMS = [
@@ -14,7 +14,6 @@ const NAV_ITEMS = [
   { to: '/imprevistos', label: 'Imprevistos', icon: AlertTriangle, perm: 'imprevistos', end: false },
   { to: '/metas', label: 'Metas', icon: Target, perm: 'metas', end: false },
   { to: '/saldos', label: 'Saldos', icon: ArrowLeftRight, perm: 'saldos', end: false },
-  { to: '/historico', label: 'Histórico', icon: History, perm: 'historico', end: false },
 ]
 
 function NavItem({ to, label, Icon, end, onClick }: { to: string; label: string; Icon: React.ElementType; end?: boolean; onClick?: () => void }) {
