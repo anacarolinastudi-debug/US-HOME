@@ -176,7 +176,17 @@ function UsersSection({ profiles, onChanged }: { profiles: Profile[]; onChanged:
   }
 
   function openEdit(profile: Profile) {
-    setEditing(profile)
+    // Normalize permissions — preenche chaves que possam estar faltando em perfis antigos
+    const { recorrentes: _r, ...cleanPerms } = profile.permissions as unknown as Record<string, boolean>
+    const normalizedPermissions: TabPermissions = {
+      despesas: true,
+      imprevistos: false,
+      metas: false,
+      saldos: false,
+      historico: false,
+      ...cleanPerms,
+    }
+    setEditing({ ...profile, permissions: normalizedPermissions })
     setNewPassword('')
     setEditError(null)
   }

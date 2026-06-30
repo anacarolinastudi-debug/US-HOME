@@ -42,7 +42,9 @@ function NavItem({ to, label, Icon, end, onClick }: { to: string; label: string;
 function SidebarContent({ onNav }: { onNav?: () => void }) {
   const { profile, signOut } = useAuth()
   const visibleItems = NAV_ITEMS.filter(item =>
-    item.perm === null ? true : profile?.permissions?.[item.perm as keyof typeof profile.permissions]
+    item.perm === null ? true :
+    profile?.is_admin ? true :
+    !!profile?.permissions?.[item.perm as keyof typeof profile.permissions]
   )
 
   return (
