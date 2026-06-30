@@ -201,9 +201,10 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
       fetchProfiles(),
       mode === 'all' ? fetchRecurringTemplates() : Promise.resolve([]),
     ])
+    const activeExpenses = allExpenses.filter(e => e.status === 'ativa')
     const visible = mode === 'imprevistos'
-      ? allExpenses
-      : allExpenses.filter(e => !(e.kind === 'recorrente' && e.template_id === null))
+      ? activeExpenses
+      : activeExpenses.filter(e => !(e.kind === 'recorrente' && e.template_id === null))
     setExpenses(visible)
     setTemplates(tpls)
     setProfiles(allProfiles)
@@ -284,7 +285,7 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
             const canEdit = profile?.is_admin || profile?.id === expense.created_by
             const isPreview = expense.id.startsWith('preview-')
             return (
-              <Card key={expense.id} className={expense.status === 'cancelada' ? 'opacity-50' : ''}>
+              <Card key={expense.id}>
                 <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0 pb-2">
                   <div className="min-w-0">
                     <CardTitle className="text-base">{expense.description}</CardTitle>
@@ -294,7 +295,6 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
                       {expense.due_date && ` · vence ${new Date(expense.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}`}
                       {expense.paid_by && expense.paid_by !== expense.created_by && ` · pago por ${profileName(expense.paid_by)}`}
                       {isPreview && ' · previsão'}
-                      {expense.status === 'cancelada' && ' · cancelada'}
                     </p>
                   </div>
                   {canEdit && expense.status === 'ativa' && !isPreview && (

@@ -19,3 +19,4 @@ Alterações:
 - Adicionada migration `0003_delete_and_recurring_preview.sql` para ajustar exclusão definitiva e geração de recorrentes do mês atual e do próximo mês.
 - Atualizado o seletor de meses para usar dropdown.
 - Adicionada projeção visual do próximo mês para despesas recorrentes quando a instância ainda não existir no banco.
+- Ajustada a aba Despesas para ocultar registros com status `cancelada` que já existiam antes da exclusão definitiva.
