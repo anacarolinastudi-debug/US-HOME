@@ -1,13 +1,14 @@
 export type ExpenseKind = 'recorrente' | 'imprevisto' | 'avulsa'
 export type ExpenseStatus = 'ativa' | 'cancelada'
 export type GoalStatus = 'ativa' | 'concluida'
+export type SplitMethod = 'capacidade' | 'igual' | 'manual'
 
 export interface TabPermissions {
   despesas: boolean
-  recorrentes: boolean
   imprevistos: boolean
   metas: boolean
   historico: boolean
+  saldos: boolean
 }
 
 export interface Profile {
@@ -40,6 +41,8 @@ export interface Expense {
   status: ExpenseStatus
   template_id: string | null
   year_month: string | null
+  paid_by: string | null
+  split_method: SplitMethod | null
   created_by: string | null
   created_at: string
 }

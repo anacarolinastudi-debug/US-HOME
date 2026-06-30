@@ -18,18 +18,18 @@ import {
 
 const TAB_LABELS: { key: keyof TabPermissions; label: string }[] = [
   { key: 'despesas', label: 'Despesas' },
-  { key: 'recorrentes', label: 'Recorrentes' },
   { key: 'imprevistos', label: 'Imprevistos' },
   { key: 'metas', label: 'Metas' },
+  { key: 'saldos', label: 'Saldos' },
   { key: 'historico', label: 'Histórico' },
 ]
 
 const DEFAULT_PERMISSIONS: TabPermissions = {
   despesas: true,
-  recorrentes: true,
-  imprevistos: true,
-  metas: true,
-  historico: true,
+  imprevistos: false,
+  metas: false,
+  saldos: false,
+  historico: false,
 }
 
 export function AdminPage() {

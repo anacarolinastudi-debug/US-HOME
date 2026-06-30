@@ -7,6 +7,7 @@ import type {
   GoalContribution,
   PaymentCapacityHistory,
   Profile,
+  SplitMethod,
 } from '@/lib/database.types'
 
 export async function fetchProfiles(): Promise<Profile[]> {
@@ -79,6 +80,10 @@ export async function createExpense(input: {
   kind: Expense['kind']
   recurrence_day?: number | null
   due_date?: string | null
+  paid_by?: string | null
+  participant_ids?: string[] | null
+  split_method?: SplitMethod
+  manual_amounts?: { profile_id: string; amount: number }[] | null
 }) {
   const { data, error } = await supabase.rpc('create_expense', {
     p_description: input.description,
@@ -86,9 +91,57 @@ export async function createExpense(input: {
     p_kind: input.kind,
     p_recurrence_day: input.recurrence_day ?? null,
     p_due_date: input.due_date ?? null,
+    p_paid_by: input.paid_by ?? null,
+    p_participant_ids: input.participant_ids ?? null,
+    p_split_method: input.split_method ?? 'capacidade',
+    p_manual_amounts: input.manual_amounts ? input.manual_amounts : null,
   })
   if (error) throw error
   return data as string
+}
+
+export async function completeSignupProfile(username: string, displayName: string) {
+  const { error } = await supabase.rpc('complete_signup_profile', {
+    p_username: username,
+    p_display_name: displayName,
+  })
+  if (error) throw error
+}
+
+export interface BalanceEntry {
+  debtorId: string
+  creditorId: string
+  amount: number
+}
+
+export function computeBalances(
+  expenses: Expense[],
+  splits: ExpenseSplit[],
+): BalanceEntry[] {
+  const net = new Map<string, number>()
+
+  for (const expense of expenses) {
+    if (expense.status !== 'ativa' || !expense.paid_by) continue
+    const expenseSplits = splits.filter((s) => s.expense_id === expense.id)
+    for (const split of expenseSplits) {
+      if (split.profile_id === expense.paid_by) continue
+      const key = [split.profile_id, expense.paid_by].sort().join('|')
+      const dir = split.profile_id < expense.paid_by ? 1 : -1
+      net.set(key, (net.get(key) ?? 0) + split.amount_owed * dir)
+    }
+  }
+
+  const results: BalanceEntry[] = []
+  for (const [key, amount] of net.entries()) {
+    if (Math.abs(amount) < 0.01) continue
+    const [a, b] = key.split('|')
+    results.push(
+      amount > 0
+        ? { debtorId: a, creditorId: b, amount: Math.abs(amount) }
+        : { debtorId: b, creditorId: a, amount: Math.abs(amount) },
+    )
+  }
+  return results
 }
 
 export async function updateExpense(expenseId: string, description: string, amount: number) {

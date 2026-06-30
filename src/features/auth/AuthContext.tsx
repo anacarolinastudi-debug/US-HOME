@@ -8,6 +8,7 @@ interface AuthContextValue {
   profile: Profile | null
   loading: boolean
   signIn: (username: string, password: string) => Promise<{ error: string | null }>
+  signUp: (username: string, password: string) => Promise<{ error: string | null; sessionCreated: boolean }>
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
 }
@@ -55,6 +56,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error: null }
   }, [])
 
+  const signUp = React.useCallback(async (username: string, password: string) => {
+    const { data, error } = await supabase.auth.signUp({
+      email: usernameToEmail(username),
+      password,
+    })
+    if (error) {
+      if (error.message.toLowerCase().includes('already')) return { error: 'Este usuário já está cadastrado', sessionCreated: false }
+      return { error: error.message, sessionCreated: false }
+    }
+    return { error: null, sessionCreated: !!data.session }
+  }, [])
+
   const signOut = React.useCallback(async () => {
     await supabase.auth.signOut()
   }, [])
@@ -64,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [session, loadProfile])
 
   return (
-    <AuthContext.Provider value={{ session, profile, loading, signIn, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ session, profile, loading, signIn, signUp, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )

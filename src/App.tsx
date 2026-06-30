@@ -3,17 +3,16 @@ import { Navigate, Route, BrowserRouter, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/features/auth/AuthContext'
 import { AppShell } from '@/components/AppShell'
 import { LoginPage } from '@/pages/LoginPage'
+import { DashboardPage } from '@/pages/DashboardPage'
 import { ExpensesPage } from '@/pages/ExpensesPage'
-import { RecurringPage } from '@/pages/RecurringPage'
 import { GoalsPage } from '@/pages/GoalsPage'
 import { HistoryPage } from '@/pages/HistoryPage'
+import { BalancesPage } from '@/pages/BalancesPage'
 import { AdminPage } from '@/pages/AdminPage'
 
 function ProtectedLayout() {
   const { session, loading } = useAuth()
-  if (loading) {
-    return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Carregando…</div>
-  }
+  if (loading) return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Carregando…</div>
   if (!session) return <Navigate to="/login" replace />
   return <AppShell />
 }
@@ -31,19 +30,13 @@ function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route element={<ProtectedLayout />}>
-            <Route path="/" element={<ExpensesPage mode="all" />} />
-            <Route path="/recorrentes" element={<RecurringPage />} />
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/despesas" element={<ExpensesPage mode="all" />} />
             <Route path="/imprevistos" element={<ExpensesPage mode="imprevistos" />} />
             <Route path="/metas" element={<GoalsPage />} />
+            <Route path="/saldos" element={<BalancesPage />} />
             <Route path="/historico" element={<HistoryPage />} />
-            <Route
-              path="/admin"
-              element={
-                <RequireAdmin>
-                  <AdminPage />
-                </RequireAdmin>
-              }
-            />
+            <Route path="/admin" element={<RequireAdmin><AdminPage /></RequireAdmin>} />
           </Route>
         </Routes>
       </AuthProvider>
