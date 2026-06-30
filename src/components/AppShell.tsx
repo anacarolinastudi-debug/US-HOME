@@ -48,7 +48,7 @@ function SidebarContent({ onNav }: { onNav?: () => void }) {
   return (
     <div className="flex h-full flex-col" style={{ background: 'var(--sidebar-bg)' }}>
       <div className="flex items-center gap-2.5 px-5 py-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg font-bold text-sm text-white" style={{ background: 'var(--sidebar-active-bg)' }}>NC</div>
+        <div translate="no" className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg font-bold text-sm text-white" style={{ background: 'var(--sidebar-active-bg)' }}>🏠</div>
         <span className="text-lg font-bold" style={{ color: 'var(--sidebar-fg)' }}>Nossa Casa</span>
       </div>
 
