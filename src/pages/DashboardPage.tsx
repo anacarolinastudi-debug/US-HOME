@@ -76,7 +76,7 @@ function MonthCalendar({ yearMonth, expenses }: { yearMonth: string; expenses: E
               <span className="font-medium" style={{ color: isToday ? 'var(--primary)' : undefined }}>{day}</span>
               {hasDue && (
                 <div className="mt-0.5 flex flex-wrap justify-center gap-0.5">
-                  {dayExpenses.slice(0, 3).map((e, j) => (
+                  {dayExpenses.slice(0, 3).map((_e, j) => (
                     <span
                       key={j}
                       className="h-1.5 w-1.5 rounded-full"
