@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useAuth } from '@/features/auth/AuthContext'
-import { addGoalContribution, createGoal, fetchGoalContributions, fetchGoals, fetchProfiles, updateGoalStatus } from '@/lib/data'
+import { addGoalContribution, createGoal, deleteGoal, fetchGoalContributions, fetchGoals, fetchProfiles, updateGoalStatus } from '@/lib/data'
 import type { Goal, GoalContribution, Profile } from '@/lib/database.types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,6 +17,13 @@ import {
 
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
 
+function daysLeft(targetDate: string) {
+  const diff = Math.ceil((new Date(targetDate + 'T12:00:00').getTime() - Date.now()) / 86400000)
+  if (diff < 0) return 'prazo encerrado'
+  if (diff === 0) return 'vence hoje'
+  return `${diff} dia${diff !== 1 ? 's' : ''} restante${diff !== 1 ? 's' : ''}`
+}
+
 export function GoalsPage() {
   const { profile } = useAuth()
   const [goals, setGoals] = React.useState<Goal[]>([])
@@ -28,6 +35,7 @@ export function GoalsPage() {
   const [name, setName] = React.useState('')
   const [description, setDescription] = React.useState('')
   const [targetAmount, setTargetAmount] = React.useState('')
+  const [targetDate, setTargetDate] = React.useState('')
   const [createError, setCreateError] = React.useState<string | null>(null)
 
   const [contributeGoal, setContributeGoal] = React.useState<Goal | null>(null)
@@ -44,9 +52,7 @@ export function GoalsPage() {
     setLoading(false)
   }, [])
 
-  React.useEffect(() => {
-    load()
-  }, [load])
+  React.useEffect(() => { load() }, [load])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -57,11 +63,17 @@ export function GoalsPage() {
       return
     }
     try {
-      await createGoal({ name: name.trim(), description: description.trim() || undefined, target_amount: targetNum })
+      await createGoal({
+        name: name.trim(),
+        description: description.trim() || undefined,
+        target_amount: targetNum,
+        target_date: targetDate || undefined,
+      })
       setCreateOpen(false)
       setName('')
       setDescription('')
       setTargetAmount('')
+      setTargetDate('')
       await load()
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'erro ao salvar')
@@ -103,7 +115,14 @@ export function GoalsPage() {
     await load()
   }
 
+  async function handleDelete(goal: Goal) {
+    if (!confirm(`Excluir a meta "${goal.name}"? Esta ação não pode ser desfeita.`)) return
+    await deleteGoal(goal.id)
+    await load()
+  }
+
   const profileName = (id: string) => profiles.find((p) => p.id === id)?.display_name ?? '—'
+  const canManage = profile?.is_admin
 
   return (
     <div className="flex flex-col gap-4">
@@ -128,12 +147,11 @@ export function GoalsPage() {
               </div>
               <div className="flex flex-col gap-2 text-left">
                 <Label htmlFor="targetAmount">Valor alvo (R$)</Label>
-                <Input
-                  id="targetAmount"
-                  value={targetAmount}
-                  onChange={(e) => setTargetAmount(e.target.value)}
-                  inputMode="decimal"
-                />
+                <Input id="targetAmount" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} inputMode="decimal" />
+              </div>
+              <div className="flex flex-col gap-2 text-left">
+                <Label htmlFor="targetDate">Data limite (opcional)</Label>
+                <Input id="targetDate" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="w-44" />
               </div>
               {createError && <p className="text-sm text-destructive">{createError}</p>}
               <DialogFooter>
@@ -157,19 +175,30 @@ export function GoalsPage() {
             return (
               <Card key={goal.id} className={goal.status === 'concluida' ? 'opacity-70' : ''}>
                 <CardHeader className="flex flex-row items-start justify-between space-y-0">
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <CardTitle className="text-base">{goal.name}</CardTitle>
                     {goal.description && <p className="text-sm text-muted-foreground">{goal.description}</p>}
+                    {goal.target_date && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Prazo: {new Date(goal.target_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                        {goal.status === 'ativa' && (
+                          <span className={`ml-1.5 font-medium ${daysLeft(goal.target_date) === 'prazo encerrado' ? 'text-destructive' : 'text-primary'}`}>
+                            · {daysLeft(goal.target_date)}
+                          </span>
+                        )}
+                      </p>
+                    )}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-shrink-0 gap-2">
                     {goal.status === 'ativa' && (
-                      <Button size="sm" onClick={() => openContribute(goal)}>
-                        Contribuir
-                      </Button>
+                      <Button size="sm" onClick={() => openContribute(goal)}>Contribuir</Button>
                     )}
                     <Button variant="outline" size="sm" onClick={() => handleToggleStatus(goal)}>
-                      {goal.status === 'ativa' ? 'Marcar concluída' : 'Reabrir'}
+                      {goal.status === 'ativa' ? 'Concluir' : 'Reabrir'}
                     </Button>
+                    {canManage && (
+                      <Button variant="destructive" size="sm" onClick={() => handleDelete(goal)}>Excluir</Button>
+                    )}
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -204,12 +233,7 @@ export function GoalsPage() {
           <form onSubmit={handleContribute} className="flex flex-col gap-4">
             <div className="flex flex-col gap-2 text-left">
               <Label htmlFor="contributeAmount">Valor (R$)</Label>
-              <Input
-                id="contributeAmount"
-                value={contributeAmount}
-                onChange={(e) => setContributeAmount(e.target.value)}
-                inputMode="decimal"
-              />
+              <Input id="contributeAmount" value={contributeAmount} onChange={(e) => setContributeAmount(e.target.value)} inputMode="decimal" />
             </div>
             <div className="flex flex-col gap-2 text-left">
               <Label htmlFor="contributeNote">Observação (opcional)</Label>

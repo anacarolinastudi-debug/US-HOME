@@ -263,13 +263,18 @@ export async function fetchGoals(): Promise<Goal[]> {
   return data as Goal[]
 }
 
-export async function createGoal(input: { name: string; description?: string; target_amount: number }) {
+export async function createGoal(input: { name: string; description?: string; target_amount: number; target_date?: string }) {
   const { error } = await supabase.from('goals').insert(input)
   if (error) throw error
 }
 
 export async function updateGoalStatus(goalId: string, status: Goal['status']) {
   const { error } = await supabase.from('goals').update({ status }).eq('id', goalId)
+  if (error) throw error
+}
+
+export async function deleteGoal(goalId: string) {
+  const { error } = await supabase.from('goals').delete().eq('id', goalId)
   if (error) throw error
 }
 

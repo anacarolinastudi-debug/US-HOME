@@ -87,6 +87,7 @@ export interface Goal {
   description: string | null
   target_amount: number
   status: GoalStatus
+  target_date: string | null
   created_by: string | null
   created_at: string
 }
