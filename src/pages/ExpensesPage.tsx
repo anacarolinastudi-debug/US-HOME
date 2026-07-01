@@ -234,6 +234,8 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
   const previewExpenses = mode === 'all' && selectedMonth === nextMonth
     ? templates
       .filter(template => template.status === 'ativa')
+      .filter(template => !template.recurrence_start_date || template.recurrence_start_date.slice(0, 7) <= selectedMonth)
+      .filter(template => !template.recurrence_end_date || template.recurrence_end_date.slice(0, 7) >= selectedMonth)
       .filter(template => !expenses.some(expense => expense.template_id === template.id && expense.year_month === selectedMonth))
       .map(template => projectedRecurringExpense(template, selectedMonth))
     : []
