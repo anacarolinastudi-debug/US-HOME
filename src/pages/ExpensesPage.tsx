@@ -230,8 +230,8 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
   React.useEffect(() => { load() }, [load])
 
   const profileName = (id: string) => profiles.find(p => p.id === id)?.display_name ?? '—'
-  const nextMonth = nextYearMonth()
-  const previewExpenses = mode === 'all' && selectedMonth === nextMonth
+  const futureMonths = [nextYearMonth(), nextYearMonth(nextYearMonth())]
+  const previewExpenses = mode === 'all' && futureMonths.includes(selectedMonth)
     ? templates
       .filter(template => template.status === 'ativa')
       .filter(template => !template.recurrence_start_date || template.recurrence_start_date.slice(0, 7) <= selectedMonth)

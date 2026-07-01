@@ -17,7 +17,9 @@ export function monthLabel(yearMonth: string) {
 
 export function buildMonthList(monthsWithData: string[]) {
   const current = currentYearMonth()
-  const set = new Set([current, nextYearMonth(current), ...monthsWithData])
+  const next1 = nextYearMonth(current)
+  const next2 = nextYearMonth(next1)
+  const set = new Set([current, next1, next2, ...monthsWithData])
   return [...set].sort((a, b) => b.localeCompare(a))
 }
 

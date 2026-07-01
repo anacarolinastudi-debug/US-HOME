@@ -37,11 +37,15 @@ export function DashboardPage() {
       setLoading(true)
       const [allExpenses, templates] = await Promise.all([fetchExpenses(), fetchRecurringTemplates()])
       const visible = allExpenses.filter(e => e.status === 'ativa' && !(e.kind === 'recorrente' && e.template_id === null))
-      const nextMonth = nextYearMonth()
-      const previewExpenses = templates
-        .filter(template => template.status === 'ativa')
-        .filter(template => !visible.some(expense => expense.template_id === template.id && expense.year_month === nextMonth))
-        .map(template => projectedRecurringExpense(template, nextMonth))
+      const futureMonths = [nextYearMonth(), nextYearMonth(nextYearMonth())]
+      const previewExpenses = futureMonths.flatMap(month =>
+        templates
+          .filter(template => template.status === 'ativa')
+          .filter(template => !template.recurrence_start_date || template.recurrence_start_date.slice(0, 7) <= month)
+          .filter(template => !template.recurrence_end_date || template.recurrence_end_date.slice(0, 7) >= month)
+          .filter(template => !visible.some(expense => expense.template_id === template.id && expense.year_month === month))
+          .map(template => projectedRecurringExpense(template, month))
+      )
       const displayExpenses = [...visible, ...previewExpenses]
       setExpenses(displayExpenses)
       if (displayExpenses.length > 0) {
@@ -49,7 +53,7 @@ export function DashboardPage() {
         const previewSplits = previewExpenses.flatMap(preview =>
           allSplits
             .filter(split => split.expense_id === preview.template_id)
-            .map(split => ({ ...split, id: `preview-${preview.id}-${split.id}`, expense_id: preview.id })),
+            .map(split => ({ ...split, id: `preview-${split.id}-${preview.year_month}`, expense_id: preview.id })),
         )
         const displaySplits = [...allSplits, ...previewSplits]
         setSplits(displaySplits.filter(s => s.profile_id === profile?.id))
