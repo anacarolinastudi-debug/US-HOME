@@ -1,5 +1,6 @@
 export type ExpenseKind = 'recorrente' | 'imprevisto' | 'avulsa'
 export type ExpenseStatus = 'ativa' | 'cancelada'
+export type PaymentStatus = 'pendente' | 'paga'
 export type GoalStatus = 'ativa' | 'concluida'
 export type SplitMethod = 'capacidade' | 'igual' | 'manual'
 
@@ -7,7 +8,6 @@ export interface TabPermissions {
   despesas: boolean
   imprevistos: boolean
   metas: boolean
-  historico: boolean
   saldos: boolean
 }
 
@@ -42,9 +42,24 @@ export interface Expense {
   template_id: string | null
   year_month: string | null
   paid_by: string | null
+  payment_status: PaymentStatus
+  paid_at: string | null
+  recurrence_start_date: string | null
+  recurrence_end_date: string | null
   split_method: SplitMethod | null
   created_by: string | null
   created_at: string
+}
+
+export interface BalanceSettlement {
+  id: string
+  year_month: string
+  debtor_id: string
+  creditor_id: string
+  amount: number
+  settled_by: string | null
+  settled_at: string
+  note: string | null
 }
 
 export interface ExpenseEdit {
@@ -84,4 +99,3 @@ export interface GoalContribution {
   note: string | null
   created_at: string
 }
-

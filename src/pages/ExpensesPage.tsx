@@ -2,7 +2,7 @@ import * as React from 'react'
 import { useAuth } from '@/features/auth/AuthContext'
 import {
   cancelExpense, createExpense, fetchExpenseSplits, fetchExpenses,
-  fetchProfiles, fetchRecurringTemplates, updateExpense,
+  fetchProfiles, fetchRecurringTemplates, markExpensePaid, updateExpense,
 } from '@/lib/data'
 import type { Expense, ExpenseSplit, Profile, SplitMethod } from '@/lib/database.types'
 import { Button } from '@/components/ui/button'
@@ -12,7 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { MonthTabs, buildMonthList, currentYearMonth } from '@/components/MonthTabs'
+import { MonthTabs, buildMonthList, currentYearMonth, nextYearMonth } from '@/components/MonthTabs'
 import { RefreshCw } from 'lucide-react'
 
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -21,22 +21,39 @@ function expenseMonth(e: Expense) {
   return (e.due_date ?? e.created_at).slice(0, 7)
 }
 
+function projectedRecurringDate(template: Expense, yearMonth: string) {
+  return `${yearMonth}-${String(template.recurrence_day ?? 1).padStart(2, '0')}`
+}
+
+function projectedRecurringExpense(template: Expense, yearMonth: string): Expense {
+  return {
+    ...template,
+    id: `preview-${template.id}-${yearMonth}`,
+    due_date: projectedRecurringDate(template, yearMonth),
+    template_id: template.id,
+    year_month: yearMonth,
+    paid_by: null,
+    payment_status: 'pendente',
+    paid_at: null,
+  }
+}
+
 interface FormProps {
   mode: 'all' | 'imprevistos'
   profiles: Profile[]
-  myId: string
   editing: Expense | null
   onSaved: () => void
   onClose: () => void
 }
 
-function ExpenseForm({ mode, profiles, myId, editing, onSaved, onClose }: FormProps) {
+function ExpenseForm({ mode, profiles, editing, onSaved, onClose }: FormProps) {
   const [description, setDescription] = React.useState(editing?.description ?? '')
   const [amount, setAmount] = React.useState(editing ? String(editing.amount) : '')
   const [dueDate, setDueDate] = React.useState(editing?.due_date ?? new Date().toISOString().slice(0, 10))
-  const [isRecurring, setIsRecurring] = React.useState(false)
-  const [recurrenceDay, setRecurrenceDay] = React.useState('1')
-  const [paidBy, setPaidBy] = React.useState(myId)
+  const [isRecurring, setIsRecurring] = React.useState(editing?.kind === 'recorrente' && editing.template_id === null)
+  const [recurrenceDay, setRecurrenceDay] = React.useState(String(editing?.recurrence_day ?? 1))
+  const [recurrenceStartDate, setRecurrenceStartDate] = React.useState(editing?.recurrence_start_date ?? new Date().toISOString().slice(0, 10))
+  const [recurrenceEndDate, setRecurrenceEndDate] = React.useState(editing?.recurrence_end_date ?? '')
   const activeProfiles = profiles.filter(p => p.active)
   const [participants, setParticipants] = React.useState<Set<string>>(new Set(activeProfiles.map(p => p.id)))
   const [splitMethod, setSplitMethod] = React.useState<SplitMethod>('capacidade')
@@ -59,15 +76,24 @@ function ExpenseForm({ mode, profiles, myId, editing, onSaved, onClose }: FormPr
     if (!editing && participants.size === 0) { setError('Selecione ao menos um participante.'); return }
     try {
       if (editing) {
-        await updateExpense(editing.id, description.trim(), amountNum)
+        await updateExpense({
+          expenseId: editing.id,
+          description: description.trim(),
+          amount: amountNum,
+          recurrence_day: isRecurring ? Number(recurrenceDay) : null,
+          recurrence_start_date: isRecurring ? recurrenceStartDate : null,
+          recurrence_end_date: isRecurring && recurrenceEndDate ? recurrenceEndDate : null,
+        })
       } else {
         await createExpense({
           description: description.trim(),
           amount: amountNum,
           kind: mode === 'imprevistos' ? 'imprevisto' : isRecurring ? 'recorrente' : 'avulsa',
           recurrence_day: isRecurring ? Number(recurrenceDay) : null,
+          recurrence_start_date: isRecurring ? recurrenceStartDate : null,
+          recurrence_end_date: isRecurring && recurrenceEndDate ? recurrenceEndDate : null,
           due_date: isRecurring ? null : dueDate,
-          paid_by: paidBy,
+          paid_by: null,
           participant_ids: selectedProfiles.map(p => p.id),
           split_method: splitMethod,
           manual_amounts: splitMethod === 'manual'
@@ -100,10 +126,20 @@ function ExpenseForm({ mode, profiles, myId, editing, onSaved, onClose }: FormPr
         </div>
       )}
       {isRecurring && (
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="rday">Dia do mês de vencimento</Label>
-          <Input id="rday" type="number" min={1} max={31} value={recurrenceDay} onChange={e => setRecurrenceDay(e.target.value)} className="w-24" />
-          <p className="text-xs text-muted-foreground">Em meses mais curtos (ex: fevereiro), usa o último dia do mês.</p>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="rday">Dia do mês</Label>
+            <Input id="rday" type="number" min={1} max={31} value={recurrenceDay} onChange={e => setRecurrenceDay(e.target.value)} />
+            <p className="text-xs text-muted-foreground">Em meses mais curtos, usa o último dia.</p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="rstart">Início</Label>
+            <Input id="rstart" type="date" value={recurrenceStartDate} onChange={e => setRecurrenceStartDate(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="rend">Fim (opcional)</Label>
+            <Input id="rend" type="date" value={recurrenceEndDate} onChange={e => setRecurrenceEndDate(e.target.value)} />
+          </div>
         </div>
       )}
       {!isRecurring && !editing && (
@@ -114,16 +150,6 @@ function ExpenseForm({ mode, profiles, myId, editing, onSaved, onClose }: FormPr
       )}
 
       {!editing && <>
-        <div className="flex flex-col gap-2">
-          <Label>Quem pagou</Label>
-          <Select value={paidBy} onValueChange={setPaidBy}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {activeProfiles.map(p => <SelectItem key={p.id} value={p.id}>{p.display_name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-
         <div className="flex flex-col gap-2">
           <Label>Quem participa</Label>
           <div className="space-y-1.5 rounded-md border p-3">
@@ -179,6 +205,8 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
   const [loading, setLoading] = React.useState(true)
   const [open, setOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<Expense | null>(null)
+  const [paying, setPaying] = React.useState<Expense | null>(null)
+  const [paidBy, setPaidBy] = React.useState('')
   const [selectedMonth, setSelectedMonth] = React.useState(currentYearMonth())
 
   const load = React.useCallback(async () => {
@@ -188,9 +216,10 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
       fetchProfiles(),
       mode === 'all' ? fetchRecurringTemplates() : Promise.resolve([]),
     ])
+    const activeExpenses = allExpenses.filter(e => e.status === 'ativa')
     const visible = mode === 'imprevistos'
-      ? allExpenses
-      : allExpenses.filter(e => !(e.kind === 'recorrente' && e.template_id === null))
+      ? activeExpenses
+      : activeExpenses.filter(e => !(e.kind === 'recorrente' && e.template_id === null))
     setExpenses(visible)
     setTemplates(tpls)
     setProfiles(allProfiles)
@@ -201,12 +230,34 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
   React.useEffect(() => { load() }, [load])
 
   const profileName = (id: string) => profiles.find(p => p.id === id)?.display_name ?? '—'
-  const months = buildMonthList(expenses.map(expenseMonth))
-  const monthExpenses = expenses.filter(e => expenseMonth(e) === selectedMonth)
+  const nextMonth = nextYearMonth()
+  const previewExpenses = mode === 'all' && selectedMonth === nextMonth
+    ? templates
+      .filter(template => template.status === 'ativa')
+      .filter(template => !expenses.some(expense => expense.template_id === template.id && expense.year_month === selectedMonth))
+      .map(template => projectedRecurringExpense(template, selectedMonth))
+    : []
+  const previewSplits = previewExpenses.flatMap(preview =>
+    splits
+      .filter(split => split.expense_id === preview.template_id)
+      .map(split => ({ ...split, id: `preview-${preview.id}-${split.id}`, expense_id: preview.id })),
+  )
+  const displayExpenses = [...expenses, ...previewExpenses]
+  const displaySplits = [...splits, ...previewSplits]
+  const months = buildMonthList(displayExpenses.map(expenseMonth))
+  const monthExpenses = displayExpenses.filter(e => expenseMonth(e) === selectedMonth)
 
   async function handleCancel(id: string) {
     if (!confirm('Excluir esta despesa?')) return
     await cancelExpense(id)
+    await load()
+  }
+
+  async function handleMarkPaid() {
+    if (!paying || !paidBy) return
+    await markExpensePaid(paying.id, paidBy)
+    setPaying(null)
+    setPaidBy('')
     await load()
   }
 
@@ -222,7 +273,31 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
             <DialogHeader>
               <DialogTitle>{editing ? 'Editar despesa' : 'Nova despesa'}</DialogTitle>
             </DialogHeader>
-            <ExpenseForm mode={mode} profiles={profiles} myId={profile?.id ?? ''} editing={editing} onSaved={load} onClose={() => setOpen(false)} />
+            <ExpenseForm mode={mode} profiles={profiles} editing={editing} onSaved={load} onClose={() => setOpen(false)} />
+          </DialogContent>
+        </Dialog>
+        <Dialog open={!!paying} onOpenChange={v => { if (!v) { setPaying(null); setPaidBy('') } }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Registrar pagamento</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-muted-foreground">
+                {paying?.description} · {currency.format(paying?.amount ?? 0)}
+              </p>
+              <div className="flex flex-col gap-2">
+                <Label>Quem pagou</Label>
+                <Select value={paidBy} onValueChange={setPaidBy}>
+                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    {profiles.filter(p => p.active).map(p => <SelectItem key={p.id} value={p.id}>{p.display_name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button onClick={handleMarkPaid} disabled={!paidBy}>Confirmar pagamento</Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
@@ -238,7 +313,10 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
                 <p className="text-sm font-medium">{t.description}</p>
                 <p className="text-xs text-muted-foreground">{currency.format(t.amount)} · dia {t.recurrence_day ?? 1}</p>
               </div>
-              <Button variant="outline" size="sm" onClick={() => handleCancel(t.id)}>Desativar</Button>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => { setEditing(t); setOpen(true) }}>Editar</Button>
+                <Button variant="outline" size="sm" onClick={() => handleCancel(t.id)}>Excluir</Button>
+              </div>
             </div>
           ))}
         </div>
@@ -253,10 +331,11 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
       ) : (
         <div className="flex flex-col gap-3">
           {monthExpenses.map(expense => {
-            const expSplits = splits.filter(s => s.expense_id === expense.id)
+            const expSplits = displaySplits.filter(s => s.expense_id === expense.id)
             const canEdit = profile?.is_admin || profile?.id === expense.created_by
+            const isPreview = expense.id.startsWith('preview-')
             return (
-              <Card key={expense.id} className={expense.status === 'cancelada' ? 'opacity-50' : ''}>
+              <Card key={expense.id}>
                 <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0 pb-2">
                   <div className="min-w-0">
                     <CardTitle className="text-base">{expense.description}</CardTitle>
@@ -264,12 +343,16 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
                       {currency.format(expense.amount)}
                       {expense.kind !== 'avulsa' && ` · ${expense.kind}`}
                       {expense.due_date && ` · vence ${new Date(expense.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}`}
-                      {expense.paid_by && expense.paid_by !== expense.created_by && ` · pago por ${profileName(expense.paid_by)}`}
-                      {expense.status === 'cancelada' && ' · cancelada'}
+                      {expense.payment_status === 'paga' && expense.paid_by && ` · pago por ${profileName(expense.paid_by)}`}
+                      {expense.payment_status !== 'paga' && ' · sem pagamento'}
+                      {isPreview && ' · previsão'}
                     </p>
                   </div>
-                  {canEdit && expense.status === 'ativa' && (
+                  {canEdit && expense.status === 'ativa' && !isPreview && (
                     <div className="flex flex-shrink-0 gap-2">
+                      {expense.payment_status !== 'paga' && (
+                        <Button variant="outline" size="sm" onClick={() => { setPaying(expense); setPaidBy(profile?.id ?? '') }}>Pagar</Button>
+                      )}
                       <Button variant="outline" size="sm" onClick={() => { setEditing(expense); setOpen(true) }}>Editar</Button>
                       <Button variant="destructive" size="sm" onClick={() => handleCancel(expense.id)}>Excluir</Button>
                     </div>

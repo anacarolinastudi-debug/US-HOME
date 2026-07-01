@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import type {
+  BalanceSettlement,
   Expense,
   ExpenseEdit,
   ExpenseSplit,
@@ -79,6 +80,8 @@ export async function createExpense(input: {
   amount: number
   kind: Expense['kind']
   recurrence_day?: number | null
+  recurrence_start_date?: string | null
+  recurrence_end_date?: string | null
   due_date?: string | null
   paid_by?: string | null
   participant_ids?: string[] | null
@@ -90,6 +93,8 @@ export async function createExpense(input: {
     p_amount: input.amount,
     p_kind: input.kind,
     p_recurrence_day: input.recurrence_day ?? null,
+    p_recurrence_start_date: input.recurrence_start_date ?? null,
+    p_recurrence_end_date: input.recurrence_end_date ?? null,
     p_due_date: input.due_date ?? null,
     p_paid_by: input.paid_by ?? null,
     p_participant_ids: input.participant_ids ?? null,
@@ -112,6 +117,16 @@ export interface BalanceEntry {
   debtorId: string
   creditorId: string
   amount: number
+  items: BalanceItem[]
+}
+
+export interface BalanceItem {
+  expenseId: string
+  description: string
+  date: string
+  paidBy: string
+  owedBy: string
+  amount: number
 }
 
 export function computeBalances(
@@ -122,6 +137,7 @@ export function computeBalances(
 
   for (const expense of expenses) {
     if (expense.status !== 'ativa' || !expense.paid_by) continue
+    if (expense.payment_status !== 'paga') continue
     const expenseSplits = splits.filter((s) => s.expense_id === expense.id)
     for (const split of expenseSplits) {
       if (split.profile_id === expense.paid_by) continue
@@ -137,18 +153,93 @@ export function computeBalances(
     const [a, b] = key.split('|')
     results.push(
       amount > 0
-        ? { debtorId: a, creditorId: b, amount: Math.abs(amount) }
-        : { debtorId: b, creditorId: a, amount: Math.abs(amount) },
+        ? { debtorId: a, creditorId: b, amount: Math.abs(amount), items: [] }
+        : { debtorId: b, creditorId: a, amount: Math.abs(amount), items: [] },
     )
   }
   return results
 }
 
-export async function updateExpense(expenseId: string, description: string, amount: number) {
+export function computeBalanceDetails(
+  expenses: Expense[],
+  splits: ExpenseSplit[],
+): BalanceEntry[] {
+  const entries = new Map<string, BalanceEntry>()
+
+  for (const expense of expenses) {
+    if (expense.status !== 'ativa' || expense.payment_status !== 'paga' || !expense.paid_by) continue
+    const expenseSplits = splits.filter((s) => s.expense_id === expense.id)
+    for (const split of expenseSplits) {
+      if (split.profile_id === expense.paid_by) continue
+      const key = `${split.profile_id}|${expense.paid_by}`
+      const current = entries.get(key) ?? {
+        debtorId: split.profile_id,
+        creditorId: expense.paid_by,
+        amount: 0,
+        items: [],
+      }
+      current.amount += split.amount_owed
+      current.items.push({
+        expenseId: expense.id,
+        description: expense.description,
+        date: expense.due_date ?? expense.created_at,
+        paidBy: expense.paid_by,
+        owedBy: split.profile_id,
+        amount: split.amount_owed,
+      })
+      entries.set(key, current)
+    }
+  }
+
+  return [...entries.values()].filter((entry) => entry.amount >= 0.01)
+}
+
+export async function updateExpense(input: {
+  expenseId: string
+  description: string
+  amount: number
+  recurrence_day?: number | null
+  recurrence_start_date?: string | null
+  recurrence_end_date?: string | null
+}) {
   const { error } = await supabase.rpc('update_expense', {
+    p_expense_id: input.expenseId,
+    p_description: input.description,
+    p_amount: input.amount,
+    p_recurrence_day: input.recurrence_day ?? null,
+    p_recurrence_start_date: input.recurrence_start_date ?? null,
+    p_recurrence_end_date: input.recurrence_end_date ?? null,
+  })
+  if (error) throw error
+}
+
+export async function markExpensePaid(expenseId: string, paidBy: string) {
+  const { error } = await supabase.rpc('mark_expense_paid', {
     p_expense_id: expenseId,
-    p_description: description,
-    p_amount: amount,
+    p_paid_by: paidBy,
+  })
+  if (error) throw error
+}
+
+export async function fetchBalanceSettlements(yearMonth?: string): Promise<BalanceSettlement[]> {
+  let query = supabase.from('balance_settlements').select('*').order('settled_at', { ascending: false })
+  if (yearMonth) query = query.eq('year_month', yearMonth)
+  const { data, error } = await query
+  if (error) throw error
+  return data as BalanceSettlement[]
+}
+
+export async function settleBalance(input: {
+  year_month: string
+  debtor_id: string
+  creditor_id: string
+  amount: number
+}) {
+  const { error } = await supabase.rpc('settle_balance', {
+    p_year_month: input.year_month,
+    p_debtor_id: input.debtor_id,
+    p_creditor_id: input.creditor_id,
+    p_amount: input.amount,
   })
   if (error) throw error
 }
