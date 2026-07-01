@@ -102,7 +102,8 @@ function ExpenseForm({ mode, profiles, myId, editing, onSaved, onClose }: FormPr
       {isRecurring && (
         <div className="flex flex-col gap-2">
           <Label htmlFor="rday">Dia do mês de vencimento</Label>
-          <Input id="rday" type="number" min={1} max={28} value={recurrenceDay} onChange={e => setRecurrenceDay(e.target.value)} className="w-24" />
+          <Input id="rday" type="number" min={1} max={31} value={recurrenceDay} onChange={e => setRecurrenceDay(e.target.value)} className="w-24" />
+          <p className="text-xs text-muted-foreground">Em meses mais curtos (ex: fevereiro), usa o último dia do mês.</p>
         </div>
       )}
       {!isRecurring && !editing && (
