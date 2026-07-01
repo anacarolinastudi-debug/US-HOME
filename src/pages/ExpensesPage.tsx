@@ -2,7 +2,7 @@ import * as React from 'react'
 import { useAuth } from '@/features/auth/AuthContext'
 import {
   cancelExpense, createExpense, fetchExpenseSplits, fetchExpenses,
-  fetchProfiles, fetchRecurringTemplates, markExpensePaid, updateExpense,
+  fetchProfiles, fetchRecurringTemplates, markExpensePaid, revertExpensePayment, updateExpense,
 } from '@/lib/data'
 import type { Expense, ExpenseSplit, Profile, SplitMethod } from '@/lib/database.types'
 import { Button } from '@/components/ui/button'
@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { MonthTabs, buildMonthList, currentYearMonth, nextYearMonth } from '@/components/MonthTabs'
-import { RefreshCw } from 'lucide-react'
+import { CheckCircle2, RefreshCw } from 'lucide-react'
 
 const currency = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -207,6 +207,8 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
   const [editing, setEditing] = React.useState<Expense | null>(null)
   const [paying, setPaying] = React.useState<Expense | null>(null)
   const [paidBy, setPaidBy] = React.useState('')
+  const [reverting, setReverting] = React.useState<Expense | null>(null)
+  const [revertPaidBy, setRevertPaidBy] = React.useState('')
   const [selectedMonth, setSelectedMonth] = React.useState(currentYearMonth())
 
   const load = React.useCallback(async () => {
@@ -263,6 +265,19 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
     await load()
   }
 
+  async function handleRevertPayment(action: 'revert' | 'change') {
+    if (!reverting) return
+    if (action === 'revert') {
+      await revertExpensePayment(reverting.id)
+    } else {
+      if (!revertPaidBy) return
+      await revertExpensePayment(reverting.id, revertPaidBy)
+    }
+    setReverting(null)
+    setRevertPaidBy('')
+    await load()
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -302,6 +317,37 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <Dialog open={!!reverting} onOpenChange={v => { if (!v) { setReverting(null); setRevertPaidBy('') } }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Editar pagamento</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-4">
+              <p className="text-sm text-muted-foreground">
+                {reverting?.description} · {currency.format(reverting?.amount ?? 0)}
+              </p>
+              <div className="flex flex-col gap-2">
+                <Label>Alterar pessoa pagante</Label>
+                <Select value={revertPaidBy} onValueChange={setRevertPaidBy}>
+                  <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    {profiles.filter(p => p.active).map(p => <SelectItem key={p.id} value={p.id}>{p.display_name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={() => handleRevertPayment('change')} disabled={!revertPaidBy}>
+                Salvar novo pagante
+              </Button>
+              <div className="border-t pt-3">
+                <p className="mb-2 text-xs text-muted-foreground">Ou desfazer o pagamento e retornar a despesa para em aberto:</p>
+                <Button variant="outline" className="w-full" onClick={() => handleRevertPayment('revert')}>
+                  Retornar em aberto
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {mode === 'all' && templates.filter(t => t.status === 'ativa').length > 0 && (
@@ -339,14 +385,20 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
             return (
               <Card key={expense.id}>
                 <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0 pb-2">
-                  <div className="min-w-0">
-                    <CardTitle className="text-base">{expense.description}</CardTitle>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-base">{expense.description}</CardTitle>
+                      {expense.payment_status === 'paga' && (
+                        <span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold" style={{ background: '#dcfce7', color: '#16a34a' }}>
+                          <CheckCircle2 className="h-3 w-3" /> Pago
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-muted-foreground">
                       {currency.format(expense.amount)}
                       {expense.kind !== 'avulsa' && ` · ${expense.kind}`}
                       {expense.due_date && ` · vence ${new Date(expense.due_date + 'T12:00:00').toLocaleDateString('pt-BR')}`}
                       {expense.payment_status === 'paga' && expense.paid_by && ` · pago por ${profileName(expense.paid_by)}`}
-                      {expense.payment_status !== 'paga' && ' · sem pagamento'}
                       {isPreview && ' · previsão'}
                     </p>
                   </div>
@@ -355,7 +407,11 @@ export function ExpensesPage({ mode }: { mode: 'all' | 'imprevistos' }) {
                       {expense.payment_status !== 'paga' && (
                         <Button variant="outline" size="sm" onClick={() => { setPaying(expense); setPaidBy(profile?.id ?? '') }}>Pagar</Button>
                       )}
-                      <Button variant="outline" size="sm" onClick={() => { setEditing(expense); setOpen(true) }}>Editar</Button>
+                      {expense.payment_status === 'paga' ? (
+                        <Button variant="outline" size="sm" onClick={() => { setReverting(expense); setRevertPaidBy(expense.paid_by ?? '') }}>Editar</Button>
+                      ) : (
+                        <Button variant="outline" size="sm" onClick={() => { setEditing(expense); setOpen(true) }}>Editar</Button>
+                      )}
                       <Button variant="destructive" size="sm" onClick={() => handleCancel(expense.id)}>Excluir</Button>
                     </div>
                   )}

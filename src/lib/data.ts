@@ -221,6 +221,14 @@ export async function markExpensePaid(expenseId: string, paidBy: string) {
   if (error) throw error
 }
 
+export async function revertExpensePayment(expenseId: string, newPaidBy?: string) {
+  const { error } = await supabase.rpc('revert_expense_payment', {
+    p_expense_id: expenseId,
+    p_new_paid_by: newPaidBy ?? null,
+  })
+  if (error) throw error
+}
+
 export async function fetchBalanceSettlements(yearMonth?: string): Promise<BalanceSettlement[]> {
   let query = supabase.from('balance_settlements').select('*').order('settled_at', { ascending: false })
   if (yearMonth) query = query.eq('year_month', yearMonth)
